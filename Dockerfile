@@ -6,10 +6,16 @@ WORKDIR /app
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install dependencies
 COPY requirements.txt .
+# Upgrade pip first
+RUN pip install --upgrade pip
+# Install pandas-ta from GitHub first (required by openbb, not available on PyPI)
+RUN pip install --no-cache-dir --user git+https://github.com/twopirllc/pandas-ta.git
+# Then install other requirements (includes openbb[technical])
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Production stage
