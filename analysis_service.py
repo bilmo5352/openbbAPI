@@ -7,6 +7,8 @@ Functions here are imported by the FastAPI interface so the API file stays minim
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+import math
+import numpy as np
 import pandas as pd
 
 # Reuse the existing logic from main.py
@@ -352,7 +354,43 @@ def _serialize_df(df: pd.DataFrame) -> list[Dict[str, Any]]:
     for col in out.columns:
         if pd.api.types.is_datetime64_any_dtype(out[col]):
             out[col] = out[col].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+    # Ensure JSON-safe floats (no NaN/Inf) before to_dict
+    out = out.replace([np.inf, -np.inf], np.nan)
+    out = out.astype(object).where(pd.notnull(out), None)
     return out.to_dict(orient="records")
+
+
+def _sanitize_for_json(obj: Any) -> Any:
+    """
+    Convert NaN/Inf and numpy/pandas scalar types to JSON-safe Python values.
+    Starlette/FastAPI disallows NaN/Infinity in JSON by default.
+    """
+    if obj is None:
+        return None
+
+    # Pandas NA
+    if obj is pd.NA:
+        return None
+
+    # Datetimes
+    if isinstance(obj, (datetime, pd.Timestamp)):
+        return obj.isoformat()
+
+    # Numpy scalars
+    if isinstance(obj, np.generic):
+        obj = obj.item()
+
+    # Floats (including converted numpy floats)
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+
+    # Containers
+    if isinstance(obj, dict):
+        return {str(k): _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_for_json(v) for v in obj]
+
+    return obj
 
 
 def analyze_ticker(
@@ -416,7 +454,7 @@ def analyze_ticker(
         df_with_ind = compute_indicators(df)
         # No explicit meta when using default compute_indicators
 
-    return {
+    payload = {
         "ticker": ticker,
         "exchange": exchange,
         "start": start_str,
@@ -427,5 +465,6 @@ def analyze_ticker(
         "computed_indicators": computed_meta,
         "skipped_indicators": skipped_meta,
     }
+    return _sanitize_for_json(payload)
 
 

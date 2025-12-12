@@ -12,6 +12,22 @@ import sys
 import requests
 
 
+def _post_json_follow_redirects(url: str, payload: dict, timeout: int = 60, max_hops: int = 3) -> requests.Response:
+    """
+    Railway often redirects http -> https. Some redirect codes can cause clients
+    to switch POST -> GET automatically, which then returns 405.
+    We disable auto-redirects and follow redirects manually while preserving POST.
+    """
+    current = url
+    for _ in range(max_hops + 1):
+        resp = requests.post(current, json=payload, timeout=timeout, allow_redirects=False)
+        if resp.status_code in (301, 302, 303, 307, 308) and "location" in resp.headers:
+            current = resp.headers["location"]
+            continue
+        return resp
+    return resp
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--ticker", required=True, help="Ticker symbol (e.g., RELIANCE)")
@@ -45,7 +61,7 @@ def main():
     )
     parser.add_argument(
         "--base_url",
-        default="http://localhost:8080",
+        default="https://openbbapi-production.up.railway.app",
         help="Base URL of the FastAPI service",
     )
     args = parser.parse_args()
@@ -59,9 +75,10 @@ def main():
         "indicators": args.indicators,
     }
 
-    url = f"{args.base_url}/analyze"
+    base = (args.base_url or "").rstrip("/")
+    url = f"{base}/analyze"
     try:
-        resp = requests.post(url, json=payload, timeout=60)
+        resp = _post_json_follow_redirects(url, payload, timeout=60)
         resp.raise_for_status()
         data = resp.json()
         rows = data.get("data", []) or []
@@ -101,7 +118,11 @@ def main():
             except Exception as e:
                 print(f"Failed to save CSV: {e}", file=sys.stderr)
     except requests.HTTPError as e:
-        print(f"HTTP error: {e.response.status_code} {e.response.text}")
+        status = e.response.status_code
+        body = e.response.text
+        print(f"HTTP error: {status} {body}")
+        if status == 405 and base.startswith("http://"):
+            print("Hint: Your URL may be redirecting http->https. Try --base_url https://<your-app>.up.railway.app")
     except Exception as e:
         print(f"Error calling API: {e}")
 
