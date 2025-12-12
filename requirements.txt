@@ -12,11 +12,13 @@ kiteconnect==4.1.0
 yfinance==0.2.32
 
 # Technical analysis
-# pandas-ta - Installed from GitHub in Dockerfile (not available on PyPI)
+# No GitHub-only dependencies during deploy (some platforms block git clone).
+# We compute indicators in pure pandas/numpy as a fallback.
 
 # OpenBB Platform (optional but recommended)
-# Install openbb with technical extension for technical analysis
-openbb[technical]
+# OpenBB is optional but pulls pandas-ta beta which isn't available on PyPI and
+# often requires GitHub access. Keep it out of the deploy image.
+# openbb[technical]
 
 # Environment variables
 python-dotenv==1.0.0

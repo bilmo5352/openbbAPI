@@ -28,15 +28,18 @@ DEFAULT_LOOKBACK_DAYS = 90
 # Indicator catalog: name -> config
 INDICATOR_CATALOG: Dict[str, Dict[str, Any]] = {
     # Core (already used)
-    "sma": {"kind": "obb", "fn": "sma", "params": {"length": 20}, "min_bars": 20},
-    "ema": {"kind": "obb", "fn": "ema", "params": {"length": 20}, "min_bars": 20},
-    "rsi": {"kind": "obb", "fn": "rsi", "params": {"length": 14}, "min_bars": 14},
-    "bbands": {"kind": "obb", "fn": "bbands", "params": {"length": 20}, "min_bars": 20},
+    # Prefer manual implementations to avoid optional heavy deps during deploy.
+    "sma": {"kind": "manual", "fn": "sma", "params": {"length": 20}, "min_bars": 20},
+    "ema": {"kind": "manual", "fn": "ema", "params": {"length": 20}, "min_bars": 20},
+    "rsi": {"kind": "manual", "fn": "rsi", "params": {"length": 14}, "min_bars": 14},
+    "bbands": {"kind": "manual", "fn": "bbands", "params": {"length": 20, "std": 2.0}, "min_bars": 20},
+    "macd": {"kind": "manual", "fn": "macd", "params": {"fast": 12, "slow": 26, "signal": 9}, "min_bars": 26},
+    "atr": {"kind": "manual", "fn": "atr", "params": {"length": 14}, "min_bars": 14},
+    "vwap": {"kind": "manual", "fn": "vwap", "params": {}, "min_bars": 1},
+    "ichimoku": {"kind": "manual", "fn": "ichimoku", "params": {"tenkan": 9, "kijun": 26, "senkou_b": 52, "shift": 26}, "min_bars": 52},
     # Additional OpenBB technicals
-    "atr": {"kind": "obb", "fn": "atr", "params": {"length": 14}, "min_bars": 14},
     "adx": {"kind": "obb", "fn": "adx", "params": {"length": 14}, "min_bars": 14},
     "obv": {"kind": "obb", "fn": "obv", "params": {}, "min_bars": 2},
-    "vwap": {"kind": "obb", "fn": "vwap", "params": {}, "min_bars": 1},
     "kc": {"kind": "obb", "fn": "kc", "params": {"length": 20}, "min_bars": 20},
     "hma": {"kind": "obb", "fn": "hma", "params": {"length": 20}, "min_bars": 20},
     "wma": {"kind": "obb", "fn": "wma", "params": {"length": 20}, "min_bars": 20},
@@ -49,15 +52,140 @@ INDICATOR_CATALOG: Dict[str, Dict[str, Any]] = {
     "fisher": {"kind": "obb", "fn": "fisher", "params": {"length": 9}, "min_bars": 9},
     "cci": {"kind": "obb", "fn": "cci", "params": {"length": 20}, "min_bars": 20},
     "donchian": {"kind": "obb", "fn": "donchian", "params": {"length": 20}, "min_bars": 20},
-    "ichimoku": {"kind": "obb", "fn": "ichimoku", "params": {}, "min_bars": 52},
     "stoch": {"kind": "obb", "fn": "stoch", "params": {"fastk": 14, "fastd": 3}, "min_bars": 14},
     "adosc": {"kind": "obb", "fn": "adosc", "params": {}, "min_bars": 2},
     "ad": {"kind": "obb", "fn": "ad", "params": {}, "min_bars": 2},
     "cones": {"kind": "obb", "fn": "cones", "params": {}, "min_bars": 2},
     "zlma": {"kind": "obb", "fn": "zlma", "params": {"length": 20}, "min_bars": 20},
-    # MACD via pandas_ta (OpenBB MACD caused duplicate columns)
-    "macd": {"kind": "ta", "fn": "macd", "params": {"fast": 12, "slow": 26, "signal": 9}, "min_bars": 26},
+    # Keep OpenBB variants available when the extension is installed, but the
+    # manual versions above should work even when OpenBB is absent.
 }
+
+
+def _require_ohlcv(out: pd.DataFrame) -> Tuple[bool, str]:
+    required_cols = ["Open", "High", "Low", "Close", "Volume"]
+    missing = [c for c in required_cols if c not in out.columns]
+    if missing:
+        return False, f"Missing OHLCV columns: {', '.join(missing)}"
+    return True, "ok"
+
+
+def _ema(series: pd.Series, length: int) -> pd.Series:
+    return series.ewm(span=length, adjust=False, min_periods=length).mean()
+
+
+def _rsi(close: pd.Series, length: int) -> pd.Series:
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+    avg_gain = gain.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+    avg_loss = loss.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+    rs = avg_gain / avg_loss.replace(0, pd.NA)
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+
+def _atr(high: pd.Series, low: pd.Series, close: pd.Series, length: int) -> pd.Series:
+    prev_close = close.shift(1)
+    tr = pd.concat(
+        [
+            (high - low).abs(),
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+    atr = tr.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+    return atr
+
+
+def _apply_manual_indicator(out: pd.DataFrame, name: str, cfg: Dict[str, Any]) -> Tuple[pd.DataFrame, bool, str]:
+    min_bars = cfg.get("min_bars", 1)
+    if len(out) < min_bars:
+        return out, False, f"insufficient data (need {min_bars})"
+
+    ok, reason = _require_ohlcv(out)
+    if not ok:
+        return out, False, reason
+
+    fn_name = cfg.get("fn")
+    params = cfg.get("params", {}) or {}
+
+    try:
+        if fn_name == "sma":
+            length = int(params.get("length", 20))
+            out[f"SMA_{length}"] = out["Close"].rolling(window=length, min_periods=length).mean()
+            return out, True, "ok"
+
+        if fn_name == "ema":
+            length = int(params.get("length", 20))
+            out[f"EMA_{length}"] = _ema(out["Close"], length)
+            return out, True, "ok"
+
+        if fn_name == "rsi":
+            length = int(params.get("length", 14))
+            out[f"RSI_{length}"] = _rsi(out["Close"], length)
+            return out, True, "ok"
+
+        if fn_name == "bbands":
+            length = int(params.get("length", 20))
+            std_mult = float(params.get("std", 2.0))
+            mid = out["Close"].rolling(window=length, min_periods=length).mean()
+            std = out["Close"].rolling(window=length, min_periods=length).std()
+            out[f"BBM_{length}"] = mid
+            out[f"BBU_{length}"] = mid + std_mult * std
+            out[f"BBL_{length}"] = mid - std_mult * std
+            return out, True, "ok"
+
+        if fn_name == "macd":
+            fast = int(params.get("fast", 12))
+            slow = int(params.get("slow", 26))
+            signal = int(params.get("signal", 9))
+            ema_fast = _ema(out["Close"], fast)
+            ema_slow = _ema(out["Close"], slow)
+            macd_line = ema_fast - ema_slow
+            signal_line = macd_line.ewm(span=signal, adjust=False, min_periods=signal).mean()
+            hist = macd_line - signal_line
+            out[f"MACD_{fast}_{slow}_{signal}"] = macd_line
+            out[f"MACDs_{fast}_{slow}_{signal}"] = signal_line
+            out[f"MACDh_{fast}_{slow}_{signal}"] = hist
+            return out, True, "ok"
+
+        if fn_name == "atr":
+            length = int(params.get("length", 14))
+            out[f"ATR_{length}"] = _atr(out["High"], out["Low"], out["Close"], length)
+            return out, True, "ok"
+
+        if fn_name == "vwap":
+            tp = (out["High"] + out["Low"] + out["Close"]) / 3.0
+            pv = tp * out["Volume"].fillna(0)
+            cum_pv = pv.cumsum()
+            cum_vol = out["Volume"].fillna(0).cumsum().replace(0, pd.NA)
+            out["VWAP"] = cum_pv / cum_vol
+            return out, True, "ok"
+
+        if fn_name == "ichimoku":
+            tenkan = int(params.get("tenkan", 9))
+            kijun = int(params.get("kijun", 26))
+            senkou_b = int(params.get("senkou_b", 52))
+            shift = int(params.get("shift", 26))
+
+            tenkan_sen = (out["High"].rolling(tenkan, min_periods=tenkan).max() + out["Low"].rolling(tenkan, min_periods=tenkan).min()) / 2.0
+            kijun_sen = (out["High"].rolling(kijun, min_periods=kijun).max() + out["Low"].rolling(kijun, min_periods=kijun).min()) / 2.0
+            senkou_a = ((tenkan_sen + kijun_sen) / 2.0).shift(shift)
+            senkou_b_line = ((out["High"].rolling(senkou_b, min_periods=senkou_b).max() + out["Low"].rolling(senkou_b, min_periods=senkou_b).min()) / 2.0).shift(shift)
+            chikou = out["Close"].shift(-shift)
+
+            out["ICH_TENKAN"] = tenkan_sen
+            out["ICH_KIJUN"] = kijun_sen
+            out["ICH_SA"] = senkou_a
+            out["ICH_SB"] = senkou_b_line
+            out["ICH_CHIKOU"] = chikou
+            return out, True, "ok"
+
+        return out, False, "manual indicator not implemented"
+    except Exception as e:
+        return out, False, f"{type(e).__name__}: {e}"
 
 
 def _extract_values_from_result(result: Any, preferred_name: Optional[str] = None) -> Optional[Tuple[List[str], pd.DataFrame]]:
@@ -196,6 +324,8 @@ def compute_selected_indicators(df: pd.DataFrame, indicators: List[str]) -> Tupl
             out, ok, reason = _apply_obb_indicator(out, ind_l, cfg)
         elif kind == "ta":
             out, ok, reason = _apply_ta_indicator(out, ind_l, cfg)
+        elif kind == "manual":
+            out, ok, reason = _apply_manual_indicator(out, ind_l, cfg)
         else:
             ok, reason = False, "unsupported kind"
 

@@ -39,6 +39,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 # Try to import OpenBB v4 Platform and extensions
+obb = None  # always define for importers (analysis_service imports this)
 obb_available = False
 obb_technical_available = False
 try:
