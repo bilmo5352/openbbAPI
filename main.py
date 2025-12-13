@@ -97,7 +97,7 @@ kite = None
 if kiteconnect_available:
     try:
         api_key = os.getenv('KITE_API_KEY', '6ej0i7fspon9w0yv')  # Default from your notebook
-        access_token = os.getenv('KITE_ACCESS_TOKEN', 'XC5jAL37iawTHPaSAJstHB0RoIjKeHrC')  # Default from your notebook
+        access_token = os.getenv('KITE_ACCESS_TOKEN', '5CUKUR0rPTHuam8FeqGzg9jsWXXgBQZK')  # Default from your notebook
         if api_key and access_token:
             kite = KiteConnect(api_key=api_key)
             kite.set_access_token(access_token)
