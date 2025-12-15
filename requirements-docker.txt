@@ -4,20 +4,22 @@ uvicorn[standard]==0.24.0
 pydantic==2.5.0
 
 # Data processing
-pandas
-numpy==1.26.2
+# NOTE: We do NOT pin pandas/numpy here. They are pulled in by pandas-ta with
+# compatible versions for Python 3.12 on Linux. Pinning them caused pip to
+# try to build incompatible pandas from source (the Meson error you saw).
 
 # Data sources
 kiteconnect==4.1.0
 yfinance==0.2.32
 
 # Technical analysis
-# In Docker (Python 3.11 on Linux), pandas-ta installs cleanly and provides 100+ indicators.
+# In Docker (Python 3.12 on Linux), pandas-ta installs cleanly and pulls
+# suitable pandas/numpy versions, giving you 100+ indicators.
 pandas-ta
 
-# TA-Lib and OpenBB are optional and intentionally not included in the base Docker image
-# to keep the build simple and portable. The API will still expose all manual + pandas-ta
-# indicators (~113 in your current setup).
+# TA-Lib and OpenBB are optional and intentionally not included in the base
+# Docker image to keep the build simple and portable. The API will still
+# expose all manual + pandas-ta indicators (~113 in your current setup).
 
 # Environment variables
 python-dotenv==1.0.0
