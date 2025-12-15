@@ -8,8 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
+# Copy Docker-specific requirements (includes pandas-ta)
+COPY requirements-docker.txt ./requirements.txt
 # Upgrade pip first
 RUN pip install --upgrade pip
 # Install requirements (no GitHub-only dependencies)

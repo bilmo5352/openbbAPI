@@ -5,8 +5,12 @@ FastAPI-based trading analysis service that fetches stock data from Zerodha Kite
 ## Features
 
 - **Data Sources**: Zerodha KiteConnect (NSE/BSE) with yfinance fallback
-- **Technical Indicators**: RSI, MACD, Bollinger Bands, ATR, VWAP, Ichimoku, and 30+ more
-- **OpenBB Integration**: Uses OpenBB Platform v4 technical extensions when available
+- **Technical Indicators**: 200+ indicators from multiple libraries
+  - **OpenBB Technical Extension**: ~150-200 indicators
+  - **TA-Lib**: ~150 indicators (industry standard)
+  - **pandas-ta**: ~200+ indicators (most comprehensive)
+  - **Manual implementations**: Core indicators (always available)
+- **Multi-Library Support**: Automatically uses best available library (OpenBB > TA-Lib > pandas-ta > manual)
 - **RESTful API**: FastAPI with automatic OpenAPI documentation
 
 ## API Endpoints
@@ -51,12 +55,50 @@ POST /analyze
 
 ## Available Indicators
 
-- `sma`, `ema`, `rsi`, `macd`, `bbands`
-- `atr`, `adx`, `obv`, `vwap`, `kc` (Keltner Channels)
-- `hma`, `wma`, `fib`, `demark`, `aroon`
-- `fisher`, `cci`, `donchian`, `ichimoku`
-- `stoch`, `adosc`, `ad`, `cones`, `zlma`
-- And more...
+The API supports **200+ technical indicators** from three major libraries. Check available indicators via:
+
+```bash
+GET /indicators
+```
+
+### Indicator Categories
+
+**Trend Indicators:**
+- Moving Averages: `sma`, `ema`, `dema`, `tema`, `wma`, `hma`, `kama`, `t3`, `trima`, `zlma`, `alma`, `jma`, `vidya`
+- Trend Analysis: `adx`, `adxr`, `aroon`, `aroonosc`, `dx`, `psar`, `supertrend`, `ichimoku`, `vortex`
+
+**Momentum Indicators:**
+- Oscillators: `rsi`, `stoch`, `stochrsi`, `stochf`, `willr`, `cci`, `cmo`, `mfi`, `roc`, `mom`, `ppo`, `trix`, `ultosc`
+- Advanced: `fisher`, `ao`, `cg`, `kst`, `tsi`, `uo`, `smi`, `qqe`, `inertia`, `squeeze`, `squeeze_pro`
+
+**Volatility Indicators:**
+- Bands: `bbands`, `kc` (Keltner Channels), `donchian`, `accbands`, `aberration`
+- Volatility: `atr`, `natr`, `trange`, `true_range`, `rvi`, `ui`, `massi`, `thermo`
+
+**Volume Indicators:**
+- Volume Analysis: `obv`, `ad`, `adosc`, `cmf`, `eom`, `efi`, `kvo`, `mfi`, `pvi`, `nvi`, `aobv`
+- Volume-Weighted: `vwap`, `vwma`, `fwma`
+
+**Pattern Recognition:**
+- 60+ Candlestick Patterns: `cdl2crows`, `cdl3blackcrows`, `cdlengulfing`, `cdlhammer`, `cdlharami`, `cdlmorningstar`, `cdleveningstar`, and many more
+
+**Price Transform:**
+- Price Calculations: `typprice`, `wclprice`, `avgprice`, `medprice`, `hl2`, `hlc3`, `ohlc4`, `wcp`
+
+**Other Indicators:**
+- Fibonacci: `fib`
+- Demark: `demark`
+- Relative Rotation: `relative_rotation`
+- Clenow: `clenow`
+- Cones: `cones`
+
+### Library Priority
+
+Indicators are computed using the first available library in this order:
+1. **OpenBB Technical Extension** (if installed)
+2. **TA-Lib** (if installed)
+3. **pandas-ta** (if installed)
+4. **Manual implementation** (always available for core indicators)
 
 ## Local Development
 
@@ -81,6 +123,27 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```bash
 pip install -r requirements.txt
 ```
+
+**Optional: Install Technical Analysis Libraries**
+
+For maximum indicator coverage, install additional libraries:
+
+```bash
+# pandas-ta (200+ indicators) - Recommended
+pip install pandas-ta
+
+# TA-Lib (150 indicators) - Requires C library first
+# Windows: Download wheel from https://www.lfd.uci.edu/~gohlke/pythonlibs/#ta-lib
+#          Then: pip install TA_Lib-0.4.XX-cpXX-cpXX-win_amd64.whl
+# Linux:   sudo apt-get install ta-lib && pip install TA-Lib
+# macOS:   brew install ta-lib && pip install TA-Lib
+pip install TA-Lib
+
+# OpenBB Technical Extension (150-200 indicators)
+pip install openbb[technical]
+```
+
+**Note:** The API works without these libraries - it will gracefully fall back to available implementations. Manual implementations are always available for core indicators.
 
 4. Set environment variables (optional):
 ```bash
@@ -200,8 +263,33 @@ Once the server is running, visit:
 
 ## Troubleshooting
 
-### OpenBB Installation Issues
-If OpenBB fails to install, the API will fall back to pandas_ta for technical indicators. This is handled gracefully.
+### Indicator Library Installation
+
+**OpenBB Installation Issues:**
+- If OpenBB fails to install, the API will fall back to TA-Lib, pandas-ta, or manual implementations
+- This is handled gracefully - the API works with any combination of libraries
+
+**TA-Lib Installation Issues:**
+- TA-Lib requires the C library to be installed first
+- If TA-Lib is not available, indicators will use pandas-ta or manual implementations
+- Check installation: `python -c "import talib; print(talib.__version__)"`
+
+**pandas-ta Installation:**
+- Usually installs without issues: `pip install pandas-ta`
+- If unavailable, core indicators will use manual implementations
+
+**Checking Available Libraries:**
+```bash
+# Check which libraries are available
+curl http://localhost:8000/indicators
+```
+
+The response includes:
+- `openbb_technical_available`: Whether OpenBB is installed
+- `talib_available`: Whether TA-Lib is installed
+- `pandas_ta_available`: Whether pandas-ta is installed
+- `total_supported`: Total indicators in catalog
+- `total_available`: Indicators available with current libraries
 
 ### Zerodha Connection Issues
 If Zerodha API fails, set `use_yfinance_fallback: true` in your request to use yfinance as fallback.

@@ -15,9 +15,27 @@ yfinance==0.2.32
 # No GitHub-only dependencies during deploy (some platforms block git clone).
 # We compute indicators in pure pandas/numpy as a fallback.
 
+# pandas-ta (Pandas Technical Analysis) - 200+ indicators (OPTIONAL)
+# It currently causes heavy dependency backtracking with Python 3.12 on Windows.
+# Leave it commented out by default and install manually if needed:
+#   pip install pandas-ta
+# pandas-ta
+
+# TA-Lib (Technical Analysis Library) - ~150 indicators
+# NOTE: TA-Lib requires the C library to be installed first!
+# Windows: Download from https://www.lfd.uci.edu/~gohlke/pythonlibs/#ta-lib
+#          Then: pip install TA_Lib-0.4.XX-cpXX-cpXX-win_amd64.whl
+# Linux:   sudo apt-get install ta-lib (or equivalent)
+#          Then: pip install TA-Lib
+# macOS:   brew install ta-lib
+#          Then: pip install TA-Lib
+# If TA-Lib is not installed, the system will gracefully fall back to other libraries.
+# TA-Lib
+
 # OpenBB Platform (optional but recommended)
 # OpenBB is optional but pulls pandas-ta beta which isn't available on PyPI and
 # often requires GitHub access. Keep it out of the deploy image.
+# Install via: pip install openbb[technical]
 # openbb[technical]
 
 # Environment variables

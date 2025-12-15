@@ -1,0 +1,28 @@
+# FastAPI and server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+
+# Data processing
+pandas
+numpy==1.26.2
+
+# Data sources
+kiteconnect==4.1.0
+yfinance==0.2.32
+
+# Technical analysis
+# In Docker (Python 3.11 on Linux), pandas-ta installs cleanly and provides 100+ indicators.
+pandas-ta
+
+# TA-Lib and OpenBB are optional and intentionally not included in the base Docker image
+# to keep the build simple and portable. The API will still expose all manual + pandas-ta
+# indicators (~113 in your current setup).
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Utilities
+requests==2.31.0
+
+

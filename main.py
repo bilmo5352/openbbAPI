@@ -87,6 +87,16 @@ try:
 except Exception:
     ta = None
 
+# TA-Lib (Technical Analysis Library) - requires C library installation
+try:
+    import talib
+    talib_available = True
+    print("TA-Lib found.")
+except Exception:
+    talib = None
+    talib_available = False
+    print("TA-Lib not found -- will use fallback libraries.")
+
 try:
     import plotly.graph_objects as go
 except Exception:
@@ -513,18 +523,140 @@ def plot_ohlc_with_indicators(df: pd.DataFrame, ticker: str, filename: str):
         print("Plotly not installed; skipping chart generation")
         return
     fig = go.Figure()
-    fig.add_trace(go.Candlestick(
-        x=df.index,
-        open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
-        name=f"{ticker} OHLC"
-    ))
-    # add SMA 20 if present
-    if 'SMA_20' in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df['SMA_20'], name='SMA 20'))
-    if 'EMA_20' in df.columns:
-        fig.add_trace(go.Scatter(x=df.index, y=df['EMA_20'], name='EMA 20'))
 
-    fig.update_layout(title=f"{ticker} OHLC with indicators", xaxis_rangeslider_visible=False)
+    # Main OHLC candlestick on primary y-axis
+    fig.add_trace(
+        go.Candlestick(
+            x=df.index,
+            open=df["Open"],
+            high=df["High"],
+            low=df["Low"],
+            close=df["Close"],
+            name=f"{ticker} OHLC",
+            yaxis="y",
+        )
+    )
+
+    # Overlay key moving averages on price axis if present
+    if "SMA_20" in df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df["SMA_20"],
+                name="SMA 20",
+                mode="lines",
+                yaxis="y",
+            )
+        )
+    if "EMA_20" in df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df["EMA_20"],
+                name="EMA 20",
+                mode="lines",
+                yaxis="y",
+            )
+        )
+
+    # Focused set of indicators to visualize clearly (avoid 100+ overlapping lines)
+    focus_indicators = [
+        # Momentum
+        "RSI_14",
+        "RSI",
+        "rsi",
+        # Volatility
+        "ATR_14",
+        "ATR",
+        "atr",
+        # Trend / bands
+        "SUPERT_7_3.0",
+        "supertrend",
+        "BBL_20_2.0",
+        "BBM_20_2.0",
+        "BBU_20_2.0",
+        "KCLe_20_2",
+        "KCUe_20_2",
+        # Volume
+        "OBV",
+        "obv",
+        "VWAP",
+        "vwap",
+        # MACD (common pandas-ta / manual names)
+        "MACD_12_26_9",
+        "MACDh_12_26_9",
+        "MACDs_12_26_9",
+        "MACD",
+        # Williams Alligator (pandas-ta output columns)
+        "AGj_13_8_5",
+        "AGt_13_8_5",
+        "AGl_13_8_5",
+    ]
+
+    base_cols = {"Open", "High", "Low", "Close", "Volume", "SMA_20", "EMA_20"}
+
+    added_any = False
+    for col in focus_indicators:
+        if col in df.columns and col not in base_cols:
+            series = df[col]
+            if not pd.api.types.is_numeric_dtype(series):
+                continue
+            # Normalize per-indicator so they share a similar scale on y2
+            s = series.astype(float)
+            std = s.std()
+            if std == 0 or pd.isna(std):
+                continue
+            norm = (s - s.mean()) / std
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=norm,
+                    name=f"{col} (norm)",
+                    mode="lines",
+                    yaxis="y2",
+                )
+            )
+            added_any = True
+
+    # Fallback: if none of the focus indicators are present, add a few first numeric columns
+    if not added_any:
+        extra_count = 0
+        for col in df.columns:
+            if col in base_cols:
+                continue
+            series = df[col]
+            if not pd.api.types.is_numeric_dtype(series):
+                continue
+            s = series.astype(float)
+            std = s.std()
+            if std == 0 or pd.isna(std):
+                continue
+            norm = (s - s.mean()) / std
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=norm,
+                    name=f"{col} (norm)",
+                    mode="lines",
+                    yaxis="y2",
+                )
+            )
+            extra_count += 1
+            if extra_count >= 5:
+                break
+
+    fig.update_layout(
+        title=f"{ticker} OHLC with indicators",
+        xaxis_rangeslider_visible=False,
+        yaxis=dict(title="Price"),
+        yaxis2=dict(
+            title="Indicators",
+            overlaying="y",
+            side="right",
+            showgrid=False,
+        ),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+    )
     fig.write_html(filename)
     print(f"Chart written to {filename}")
 
